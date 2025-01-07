@@ -25,7 +25,7 @@ def sensitivity2d_data_gen(conv,cost,premium,market_prices,scenarios, gasconv = 
             conv: Conversion factor for ethanol to jet fuel, Units: m3 jet/m3 eth
             cost: Production cost for upgrading ethanol to jet fuel, Units: $R/m3 jet
             premium: premium price paid for sustainable aviation fuel (SAF), Units: $R/m3
-            market_prices: dictionary of market prices indexed by product and scenarios (weeks), Units: $R/m3
+            market_prices: dictionary of market prices indexed by product and scenarios (weeks), Units: R$/m3 or R$/tonne
             scenarios: list of time scenarios (weeks) for market prices
             gasconv: Conversion factor for ethanol to gasoline, Units: m3 gas/m3 eth, Default: 0 
             dconv: Conversion factor for ethanol to diesel, Units: m3 diesel/m3 eth, Default: 0
@@ -39,7 +39,19 @@ def sensitivity2d_data_gen(conv,cost,premium,market_prices,scenarios, gasconv = 
     gamma_frac = np.zeros((11,11))
     
     #Create the optimization model with full flexibility (equivilent to solving one scenario at a time)
-    m = create_stochastic_model_v2(premium, market_prices, scenarios, 0.2, 0.4, 0.4, 0.4, 1, 1,0.42,0,0)
+    #Specify the fixed input data for the model
+    min_eth_market = 0.2 
+    min_eth = 0.4
+    min_sug = 0.4
+    min_saf = 0.4
+    juice_flex = 1
+    eth_flex = 1
+    jet_energy = 0.42 #MWh/m3
+    d_price = 0 #R$/m3
+    g_price = 0 #R$/m3
+
+    #Create an instance of the optimization model
+    m = create_stochastic_model_v2(premium, market_prices, scenarios, min_eth_market, min_eth, min_saf, min_sug, juice_flex, eth_flex, jet_energy, d_price, g_price)
     
     m.gas_conv = gasconv
     m.diesel_conv = dconv
