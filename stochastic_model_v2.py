@@ -1,6 +1,7 @@
 '''
 This file contains a function defining a stochastic model for an integrated sugarcane mill including the production
-of sustainable aviation fuel (SAF) and diesel to support the manuscript CITE.
+of sustainable aviation fuel (SAF) and diesel to support the manuscript "A Case for Bio-jet Fuel from Bioethanol in Brazil: An Optimization-based
+Analysis Using Historical Market Data."
 
 Created by Madelynn Watson and the University of Notre Dame
 '''
@@ -51,7 +52,7 @@ def create_stochastic_model_v2(premium, market_prices, scenarios, eth_market, et
     m.SCENARIOS = pyo.Set(initialize = scenarios)
 
 #PARAMETERS
-    # Read in parameter data from excel sheet
+    # Read in nominal parameter data from excel sheet
     df_maxcap = pd.read_excel('Mutran_jet_datav2.xlsx', sheet_name='MaxAnnualCap')
     df_prodcost = pd.read_excel('Mutran_jet_datav2.xlsx', sheet_name='ProductionCost')
     df_conv = pd.read_excel('Mutran_jet_datav2.xlsx', sheet_name='Conversions')
@@ -91,25 +92,25 @@ def create_stochastic_model_v2(premium, market_prices, scenarios, eth_market, et
 
 #PYOMO PARAMETERS
     #Create pyomo objects for scalar model parameters
-    m.jet_conv = pyo.Param(initialize = conv['e2',4,'a'], mutable = True)
-    m.gas_conv = pyo.Param(initialize = conv['e2',4,'g'], mutable=True)
-    m.diesel_conv = pyo.Param(initialize = conv['e2',4,'d'], mutable=True)
-    m.jet_pc = pyo.Param(initialize = prodcost['a'], mutable = True)
-    m.eth_pc = pyo.Param(initialize = prodcost['e'])
-    m.sug_pc = pyo.Param(initialize = prodcost['s'])
-    m.mu_el = pyo.Param(initialize = 274.6 - prodcost['p'])
-    m.jet_energy = pyo.Param(initialize = jet_energy)
-    m.Ca = pyo.Param(initialize = 3000000)  #Mill capacity in tonnes of sugarcane cane
-    m.diesel_price = pyo.Param(initialize = d_price)
-    m.gas_price = pyo.Param(initialize = g_price)
-    m.premium = pyo.Param(initialize = premium , mutable = True, within = pyo.NonNegativeReals)
-    m.sugar_min = pyo.Param(initialize = sugar_min, mutable = True)
-    m.saf_min = pyo.Param(initialize = jet_min, mutable = True)
-    m.eth_market = pyo.Param(initialize = eth_market, mutable = True)
-    m.eth_min = pyo.Param(initialize = eth_min, mutable = True)
-    m.juice_flex = pyo.Param(initialize = juice_flex, mutable = True)
-    m.eth_flex = pyo.Param(initialize = eth_flex, mutable = True)
-    m.N = pyo.Param(initialize = len(scenarios))
+    m.jet_conv = pyo.Param(initialize = conv['e2',4,'a'], mutable = True) #SAF conversion factor for unit 4 (ethanol upgrading), m3 a/m3 e2
+    m.gas_conv = pyo.Param(initialize = conv['e2',4,'g'], mutable=True) #Gasoline conversion factor for unit 4 (ethanol upgrading), m3 g/m3 e2
+    m.diesel_conv = pyo.Param(initialize = conv['e2',4,'d'], mutable=True) #Diesel conversion factor for unit 4 (ethanol upgrading), m3 d/m3 e2
+    m.jet_pc = pyo.Param(initialize = prodcost['a'], mutable = True) #Production cost of SAF, R$/m3 a
+    m.eth_pc = pyo.Param(initialize = prodcost['e']) #Production cost of ethanol, R$/m3 e
+    m.sug_pc = pyo.Param(initialize = prodcost['s']) #Production cost of sugar, R$/tonne s
+    m.mu_el = pyo.Param(initialize = 274.6 - prodcost['p']) #Production cost of electricity R$/MWh
+    m.jet_energy = pyo.Param(initialize = jet_energy) #Energy consumption for SAF production MWh/m3 e2
+    m.Ca = pyo.Param(initialize = 3000000)  #Mill capacity in tonnes of sugarcane cane, tonne/year
+    m.diesel_price = pyo.Param(initialize = d_price) #Diesel price, R$/m3 d
+    m.gas_price = pyo.Param(initialize = g_price) #Gasoline price, R$/m3 g
+    m.premium = pyo.Param(initialize = premium , mutable = True, within = pyo.NonNegativeReals) #SAF premium, R$/m3 a
+    m.sugar_min = pyo.Param(initialize = sugar_min, mutable = True) #Minimum production fraction of sugar
+    m.saf_min = pyo.Param(initialize = jet_min, mutable = True) #Minimum production fraction of SAF
+    m.eth_market = pyo.Param(initialize = eth_market, mutable = True) #Minimum fraction of ethanol sold to the market
+    m.eth_min = pyo.Param(initialize = eth_min, mutable = True) #Minimum production fraction of ethanol
+    m.juice_flex = pyo.Param(initialize = juice_flex, mutable = True) #Juice split flexibility
+    m.eth_flex = pyo.Param(initialize = eth_flex, mutable = True) #Ethanol split flexibility
+    m.N = pyo.Param(initialize = len(scenarios)) #Total number of scenarios
 
 #VARIABLES
     #Positive Variables
@@ -121,16 +122,15 @@ def create_stochastic_model_v2(premium, market_prices, scenarios, eth_market, et
     #Binary Variables for surrogate model
     m.z = pyo.Var(m.SCENARIOS,m.PIECEWISE_INTERVALS1, within = pyo.Binary)
 
-#Constraints
-
+#CONSTRAINTS
 #Superstructure Constraints (Scenario Based)
     def mill1(m,s):
         return m.x['j',s] == m.Ca * conv['c',1,'j']
     m.mill_mass_bal1 = pyo.Constraint(m.SCENARIOS, rule = mill1)
 
-    # def mill2(m,s):
-    #     return m.x['b',s] == m.Ca * conv['c',1,'b']
-    # m.mill_mass_bal2 = pyo.Constraint(m.SCENARIOS,rule = mill2)
+    def mill2(m,s):
+        return m.x['b',s] == m.Ca * conv['c',1,'b']
+    m.mill_mass_bal2 = pyo.Constraint(m.SCENARIOS,rule = mill2)
 
     def juice1(m,s):
         return m.x['j',s] == m.x['j1',s] + m.x['j2',s]
@@ -259,7 +259,7 @@ def create_stochastic_model_v2(premium, market_prices, scenarios, eth_market, et
         return m.profit[s] == m.x['s',s]*(market_prices['s'][s]-prodcost['s']) - m.x['e',s]*prodcost['e'] + market_prices['e'][s]*m.x['e1',s] + m.x['a',s]*(market_prices['a'][s] + m.premium - m.jet_pc) + (m.x['p',s] - jet_energy*m.x['e2',s])*m.mu_el + m.x['d',s] * m.diesel_price + m.x['g',s] * m.gas_price
     m.prof_scenario = pyo.Constraint(m.SCENARIOS, rule = profit)
 
-#Objective
+#OBJECTIVE
     def obj_rule(m):
         return (1/m.N) * sum(m.profit[s] for s in m.SCENARIOS)
     m.obj = pyo.Objective(rule=obj_rule, sense=pyo.maximize)
