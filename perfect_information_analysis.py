@@ -47,21 +47,37 @@ def perfect_information_data_gen(conv,cost,premium,market_prices,scenarios, gasc
     profit = []
     
     #Run the model at each scenario and save the split flow rates and objective (profit) (527 instances)
+    #Specify the fixed input data for the model
+    min_eth_market = 0.2 
+    min_eth = 0.4
+    min_sug = 0.4
+    min_saf = 0.4
+    juice_flex = 1
+    eth_flex = 1
+    jet_energy = 0.42 #MWh/m3
+    d_price = 3200 #R$/m3
+    g_price = 2600 #R$/m3
+
+    #Loop through scenarios
     for i in scenarios:
-        m = create_stochastic_model_v2(premium, market_prices, [i], 0.2, 0.4, 0.4, 0.4, 1, 1,0.42,3200, 2600)
+        #Create the model
+        m = create_stochastic_model_v2(premium, market_prices, [i], min_eth_market, min_eth, min_saf, min_sug, juice_flex, eth_flex, jet_energy, d_price, g_price)
+        #Update the parameters that change for the conventional and optimistic cases
         m.jet_conv = conv
         m.jet_pc = cost
         m.gas_conv = gasconv
         m.diesel_conv = dconv
+        #Solve
         sol =pyo.SolverFactory('gurobi', tee=True)
         sol.solve(m)
         #Store results
-        juice_to_dist.append(pyo.value(m.x['j2',i]))
-        juice_to_fact.append(pyo.value(m.x['j1',i]))
-        eth_to_market.append(pyo.value(m.x['e1',i]))
-        eth_to_SAF.append(pyo.value(m.x['e2',i]))
-        profit.append(pyo.value(m.obj))
+        juice_to_dist.append(pyo.value(m.x['j2',i])) #Amount of juice sent to distillary for each scenario
+        juice_to_fact.append(pyo.value(m.x['j1',i])) #Amount of juice sent to sugar factory for each scenario
+        eth_to_market.append(pyo.value(m.x['e1',i])) #Amount of ethanol sent to market for each scenario
+        eth_to_SAF.append(pyo.value(m.x['e2',i])) #Amount of ethanol sent to upgrade to SAF for each scenario
+        profit.append(pyo.value(m.obj)) #Profit
 
+    #Organize results in dictionaries 
     data_dict['juice to dist'] = juice_to_dist
     data_dict['juice to fact'] = juice_to_fact
     data_dict['eth to market'] = eth_to_market
@@ -102,24 +118,28 @@ def perfect_information_data_gen(conv,cost,premium,market_prices,scenarios, gasc
 
     #Sort data by operating mode rules, calculate ratios defined in main text
     for i in range(len(theta)):
+        #Max sugar, max ethanol to market
         if theta[i] > 0.6 and gamma[i] > 0.5:
             region1_profit.append(profit[i])
             region1_scenario.append(i)
             region1_ratio1.append(((market_prices['a'][i] + premium - pyo.value(m.jet_pc))*pyo.value(m.jet_conv) + pyo.value(m.diesel_price)*pyo.value(m.diesel_conv) + pyo.value(m.gas_price)*pyo.value(m.gas_conv) - pyo.value(m.mu_el)*pyo.value(m.jet_energy))/market_prices['e'][i])
             region1_ratio2.append(pyo.value(m.alpha)*(market_prices['e'][i]*gamma[i] - pyo.value(m.eth_pc) + (1-gamma[i])*((market_prices['a'][i] + premium -pyo.value(m.jet_pc))*pyo.value(m.jet_conv) + pyo.value(m.diesel_price)*pyo.value(m.diesel_conv) + pyo.value(m.gas_price)*pyo.value(m.gas_conv)))/((market_prices['s'][i]-pyo.value(m.sug_pc))*pyo.value(m.alpha) + pyo.value(m.mu_el)* (169704 - pyo.value(m.jet_energy)*(1-gamma[i])*(pyo.value(m.alpha)/-1.64))))
         
+        #Max sugar, max SAF
         elif theta[i] > 0.6 and gamma[i] < 0.4:
             region2_profit.append(profit[i])
             region2_scenario.append(i)
             region2_ratio1.append(((market_prices['a'][i] + premium - pyo.value(m.jet_pc))*pyo.value(m.jet_conv) + pyo.value(m.diesel_price)*pyo.value(m.diesel_conv) + pyo.value(m.gas_price)*pyo.value(m.gas_conv) - pyo.value(m.mu_el)*pyo.value(m.jet_energy))/market_prices['e'][i])
             region2_ratio2.append(pyo.value(m.alpha)*(market_prices['e'][i]*gamma[i] - pyo.value(m.eth_pc) + (1-gamma[i])*((market_prices['a'][i] + premium -pyo.value(m.jet_pc))*pyo.value(m.jet_conv) + pyo.value(m.diesel_price)*pyo.value(m.diesel_conv) + pyo.value(m.gas_price)*pyo.value(m.gas_conv)))/((market_prices['s'][i]-pyo.value(m.sug_pc))*pyo.value(m.alpha) + pyo.value(m.mu_el)* (169704 - pyo.value(m.jet_energy)*(1-gamma[i])*(pyo.value(m.alpha)/-1.64))))
         
+        #Max ethanol, max ethanol to market
         elif theta[i] < 0.5 and gamma[i] > 0.5:
             region3_profit.append(profit[i])
             region3_scenario.append(i)
             region3_ratio1.append(((market_prices['a'][i] + premium - pyo.value(m.jet_pc))*pyo.value(m.jet_conv) + pyo.value(m.diesel_price)*pyo.value(m.diesel_conv) + pyo.value(m.gas_price)*pyo.value(m.gas_conv) - pyo.value(m.mu_el)*pyo.value(m.jet_energy))/market_prices['e'][i])
             region3_ratio2.append(pyo.value(m.alpha)*(market_prices['e'][i]*gamma[i] - pyo.value(m.eth_pc) + (1-gamma[i])*((market_prices['a'][i] + premium -pyo.value(m.jet_pc))*pyo.value(m.jet_conv) + pyo.value(m.diesel_price)*pyo.value(m.diesel_conv) + pyo.value(m.gas_price)*pyo.value(m.gas_conv)))/((market_prices['s'][i]-pyo.value(m.sug_pc))*pyo.value(m.alpha) + pyo.value(m.mu_el)* (-47964 - pyo.value(m.jet_energy)*(1-gamma[i])*(pyo.value(m.alpha)/-1.64))))
         
+        #Max ethanol, max SAF
         elif theta[i] < 0.5 and gamma[i] < 0.4:
             region4_profit.append(profit[i])
             region4_scenario.append(i)

@@ -1,5 +1,6 @@
 '''
-This file contains a function that runs the optimization model one scenario at a time and returns the frequency of scenarios in each operating mode
+This file contains a function that conducts a 2D sensitivity analysis on the optimization model over a range of SAF conversion factors and OPEX values
+and returns the fraction of scenarios that maximize bio-jet fuel for each case.
 
 Created by Madelynn Watson and the University of Notre Dame
 '''
@@ -16,34 +17,46 @@ import pandas as pd
 def sensitivity2d_data_gen(conv,cost,premium,market_prices,scenarios, gasconv = 0, dconv=0):
 
     '''
-    This function runs the optimization model one scenario at a time for 527 total scenarios and returns the frequency of scenarios in each operating mode.
+    This function runs the optimization model at varying SAF conversions and OPEX values and returns the fraction of scenarios that maximize SAF.
 
 
     Inputs: 
     
             conv: Conversion factor for ethanol to jet fuel, Units: m3 jet/m3 eth
             cost: Production cost for upgrading ethanol to jet fuel, Units: $R/m3 jet
-            premium: premium price paid for sustainable aviation fuel (SAF), bounds: (0,infinity), Units: $R/m3
-            market_prices: dictionary of market prices indexed by product and scenarios (weeks)
+            premium: premium price paid for sustainable aviation fuel (SAF), Units: $R/m3
+            market_prices: dictionary of market prices indexed by product and scenarios (weeks), Units: R$/m3 or R$/tonne
             scenarios: list of time scenarios (weeks) for market prices
-            gasconv: Conversion factor for ethanol to gasoline, Units: m3 gas/m3 eth, Default: 0 (conventional)
-            dconv: Conversion factor for ethanol to diesel, Units: m3 diesel/m3 eth, Default: 0 (conventional)
+            gasconv: Conversion factor for ethanol to gasoline, Units: m3 gas/m3 eth, Default: 0 
+            dconv: Conversion factor for ethanol to diesel, Units: m3 diesel/m3 eth, Default: 0
 
     Returns:
 
-            sorted_dat
+            gamma_frac_df: Data frame storing the fraction of scenarios that maximize SAF at every cost and conversion combination
     '''
     
     #Create and empty matrix to store the fraction of scenarios that maximize SAF
     gamma_frac = np.zeros((11,11))
     
     #Create the optimization model with full flexibility (equivilent to solving one scenario at a time)
-    m = create_stochastic_model_v2(premium, market_prices, scenarios, 0.2, 0.4, 0.4, 0.4, 1, 1,0.42,0,0)
+    #Specify the fixed input data for the model
+    min_eth_market = 0.2 
+    min_eth = 0.4
+    min_sug = 0.4
+    min_saf = 0.4
+    juice_flex = 1
+    eth_flex = 1
+    jet_energy = 0.42 #MWh/m3
+    d_price = 0 #R$/m3
+    g_price = 0 #R$/m3
+
+    #Create an instance of the optimization model
+    m = create_stochastic_model_v2(premium, market_prices, scenarios, min_eth_market, min_eth, min_saf, min_sug, juice_flex, eth_flex, jet_energy, d_price, g_price)
     
     m.gas_conv = gasconv
     m.diesel_conv = dconv
 
-    # Loop through conversions and opex 
+    # Loop through conversion and opex ranges
     
     for i in range(len(conv)):
         for j in range(len(cost)):
@@ -54,12 +67,17 @@ def sensitivity2d_data_gen(conv,cost,premium,market_prices,scenarios, gasconv = 
                 sol =pyo.SolverFactory('gurobi', tee=True)
                 sol.solve(m)
                 #Sort through results and collect scenarios that maximize SAF (gamma < 0.6))
+                #create empty array to count scenarios that maximize saf
                 gamma_saf = []
+                #initialize gamma
                 gamma = 0
+                #loop through scenarios
                 for k in scenarios:
                         gamma = pyo.value(m.x['e1',k])/ (pyo.value(m.x['e1',k]) + pyo.value(m.x['e2',k]))
                         if gamma < 0.6:
+                                #Count all scenarios that maximize SAF
                                 gamma_saf.append(gamma)
+                #Calculate the fraction of total scenarios that maximize SAF
                 gamma_frac[i,j] = len(gamma_saf)/len(scenarios)
     gamma_frac_df = pd.DataFrame.from_dict(gamma_frac)
         
